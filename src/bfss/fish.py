@@ -9,7 +9,7 @@ class Fish:
         Inicializa um peixe para o Binary Fish School Search.
         :param num_features: total de atributos no dataset.
         """
-        self.position = np.random.randint(2, size=num_features)  # Posição binária inicial aleatoriezada
+        self.position = np.random.randint(2, size=num_features)  # Posição inicial binária aleatoriezada
         self.weight = 1.0  # Peso inicial
         self.fitness = 0.0  
         self.delta_fitness = 0.0  # Variação do fitness
@@ -24,7 +24,7 @@ class Fish:
         selected_features = np.where(self.position == 1)[0]  # Índices dos atributos selecionado
 
         if len(selected_features) == 0:
-            self.fitness = 0.0  # Se nenhum atributo for selecionado, fitness é zero
+            self.fitness = 0.0 
             return
         
         X_subset = X[:, selected_features] # Subconjunto com os atributos selecionados
@@ -58,7 +58,7 @@ class Fish:
             # Avalia a nova posição
             self.evaluate(X, y)
             
-            # só aceita a mudança se o fitness melhorar, caso contrário, desfaz a inversão.
+            # desfaz a inversão se o fitness não melhorar
             if self.fitness <= old_fitness:
                 self.position = old_position
                 self.fitness = old_fitness

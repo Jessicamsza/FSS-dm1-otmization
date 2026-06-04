@@ -2,9 +2,10 @@ import os
 import pandas as pd
 from bfss.school import School
 
-def load_data(filepath, target_column='FL_OBITO'):
+def load_data(filepath, target_column='VALOR_RESULTADO'):
     """
     Carrega a base de dados.
+    Default Target = hemoglobina glicada.
     """
     df = pd.read_csv(filepath)
     

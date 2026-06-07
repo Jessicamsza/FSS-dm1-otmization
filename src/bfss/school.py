@@ -1,104 +1,92 @@
 import numpy as np
-from fish import Fish
+from .fish import Fish
 
 class School:
     def __init__(self, num_fishes, num_features):
-        """
-        Inicializa o cardume com uma quantidade específica de peixes.
-        """
         self.num_fishes = num_fishes
         self.num_features = num_features
-        
         self.fishes = [Fish(num_features) for _ in range(num_fishes)]
         
-        # Memória do peso total do cardume
+        # Memória de peso global do cardume
         self.total_weight = float(num_fishes)
         self.prev_total_weight = float(num_fishes)
 
     def feed(self):
         """
-        Distribui o ganho de peso para os peixes que melhoraram seu fitness.
+        Operador de Alimentação.
+        Distribui peso proporcionalmente aos peixes que tiveram sucesso na exploração.
         """
-        
         max_delta = max([fish.delta_fitness for fish in self.fishes])
         
-        #encerra o processo caso ninguém tenha melhorado
         if max_delta <= 0:
             return
 
-        #Distribui o peso
         for fish in self.fishes:
             if fish.delta_fitness > 0:
-                # O ganho de peso é normalizado pelo peixe que teve o maior ganho
+                # Eq. 3: Variação de peso normalizada pelo maior ganho
                 weight_gain = fish.delta_fitness / max_delta
                 fish.weight += weight_gain
                 
-        #Atualiza a balança do cardume
         self.prev_total_weight = self.total_weight
         self.total_weight = sum([fish.weight for fish in self.fishes])
 
-    def instinctive_movement(self, X, y):
+    def instinctive_movement(self, X_train, X_test, y_train, y_test, param_I, weight_acc, weight_feat):
         """
-        Calcula a direção média de sucesso e puxa o cardume levemente para ela.
+        Movimento Instintivo (Seção 5.b). 
+        Atrai o cardume na direção da média ponderada de sucesso individual.
         """
-        # Soma os ganhos de fitness apenas dos peixes que melhoraram
         sum_delta = sum([f.delta_fitness for f in self.fishes if f.delta_fitness > 0])
-        
-        # instinto nulo se nenhum peixe melhorou.
         if sum_delta == 0:
             return
 
-        # Calcula o vetor Instinto 
-        I = np.zeros(self.num_features)
+        # Eq. 13: Cálculo do vetor Instinto Contínuo (I)
+        I_continuous = np.zeros(self.num_features)
         for f in self.fishes:
             if f.delta_fitness > 0:
-                I += f.position * f.delta_fitness
-        I = I / sum_delta
+                I_continuous += f.position * f.delta_fitness
+        I_continuous = I_continuous / sum_delta
 
-        # Move cada peixe em direção ao Instinto
+        # Exemplo 15: Binarização via Limiar Adaptativo (Adaptive Threshold)
+        threshold = param_I * np.max(I_continuous)
+        I_bin = (I_continuous >= threshold).astype(int)
+
         for f in self.fishes:
-            old_position = np.copy(f.position)
-            old_fitness = f.fitness
-
-            for j in range(self.num_features):
-                if np.random.rand() < I[j]:
-                    f.position[j] = 1
-                else:
-                    f.position[j] = 0
-
-            # Avalia a nova posição
-            f.evaluate(X, y)
+            diff_indices = np.where(f.position != I_bin)[0]
             
-            # Se o movimento instivido não melhorar o fitness o peixe recusa.
-            if f.fitness <= old_fitness:
-                f.position = old_position
-                f.fitness = old_fitness
-                f.delta_fitness = 0.0
+            # Exemplo 16: Aproximação suave invertendo estritamente 1 único bit diferente
+            if len(diff_indices) > 0:
+                bit_to_flip = np.random.choice(diff_indices)
+                f.position[bit_to_flip] = 1 - f.position[bit_to_flip]
 
-    def volitive_movement(self, X, y):
+            f.evaluate(X_train, X_test, y_train, y_test, weight_acc, weight_feat)
+
+    def volitive_movement(self, X_train, X_test, y_train, y_test, param_V, weight_acc, weight_feat):
         """
-        Expande ou contrai o cardume em relação ao Baricentro.
+        Movimento Volitivo
+        Contrai ou dilata o cardume baseado no sucesso global da iteração.
         """
-        # Calcula o Baricentro (B) ponderado pelo peso atual
-        B = np.zeros(self.num_features)
+        # Eq. 6: Cálculo do Baricentro Contínuo ponderado pelos pesos absolutos
+        B_continuous = np.zeros(self.num_features)
         for f in self.fishes:
-            B += f.position * f.weight
-        B = B / self.total_weight
+            B_continuous += f.position * f.weight
+        B_continuous = B_continuous / self.total_weight
 
-        # Define a ação volitiva baseada no sucesso global
+        # Limiar Adaptativo para gerar o Baricentro Binário
+        threshold = param_V * np.max(B_continuous)
+        B_bin = (B_continuous >= threshold).astype(int)
+
+        # Avalia o sucesso global da iteração
         is_attracting = self.total_weight > self.prev_total_weight
 
-        # Move o cardume coletivamente
         for f in self.fishes:
-            for j in range(self.num_features):
-                # Se atrai, a probabilidade de virar '1' é o próprio Baricentro
-                # Se repele, a probabilidade inverte (1 - Baricentro) para forçar exploração
-                prob_to_one = B[j] if is_attracting else (1.0 - B[j])
-                
-                if np.random.rand() < prob_to_one:
-                    f.position[j] = 1
-                else:
-                    f.position[j] = 0
+            # Exemplo 17 e 18: Se atraindo (sucesso), alvo é o Baricentro. Senão, Anti-Baricentro.
+            target = B_bin if is_attracting else (1 - B_bin)
+            
+            diff_indices = np.where(f.position != target)[0]
+            
+            # Inversão suave de estritamente 1 único bit
+            if len(diff_indices) > 0:
+                bit_to_flip = np.random.choice(diff_indices)
+                f.position[bit_to_flip] = 1 - f.position[bit_to_flip]
 
-            # O peixe aceita o deslocamento mesmo que o fitness caia, para evitar mínimos locais.
-            f.evaluate(X, y)
+            f.evaluate(X_train, X_test, y_train, y_test, weight_acc, weight_feat)

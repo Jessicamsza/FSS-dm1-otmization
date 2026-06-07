@@ -1,0 +1,66 @@
+import os
+import sys
+import pandas as pd
+from sklearn.datasets import load_wine
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score
+
+root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if root not in sys.path:
+    sys.path.insert(0, root)
+from src.bfss.featureSelection import run_bfss
+
+def criar_dataset_teste(caminho_csv: str):
+    """Gera o dataset de vinho para testes automatizados."""
+    data = load_wine()
+    df = pd.DataFrame(data.data, columns=data.feature_names)
+    df['target_class'] = data.target 
+    df.to_csv(caminho_csv, index=False)
+
+def test_bfss():
+    """
+    Testa se o BFSS consegue selecionar menos features 
+    e manter um desempenho razoável no KNN.
+    """
+    caminho_csv = "wine_test_temp.csv"
+    coluna_alvo = "target_class"
+    
+    criar_dataset_teste(caminho_csv)
+    
+    # 1. Roda o BFSS
+    selected_features = run_bfss(
+        filepath=caminho_csv, 
+        target_column=coluna_alvo,
+        num_fishes=10,       # Valores menores para o teste rodar rápido
+        num_iterations=10 
+    )
+    
+    # 2. Prepara os dados para validação
+    df = pd.read_csv(caminho_csv)
+    y = df[coluna_alvo].values
+    X_full = df.drop(columns=[coluna_alvo]).values
+    X_bfss = df[selected_features].values
+    
+    X_train_f, X_test_f, y_train, y_test = train_test_split(X_full, y, test_size=0.3, random_state=42)
+    X_train_b, X_test_b, _, _ = train_test_split(X_bfss, y, test_size=0.3, random_state=42)
+
+    # 3. Treina os modelos
+    knn_baseline = KNeighborsClassifier(n_neighbors=5).fit(X_train_f, y_train)
+    acc_baseline = accuracy_score(y_test, knn_baseline.predict(X_test_f))
+
+    knn_bfss = KNeighborsClassifier(n_neighbors=5).fit(X_train_b, y_train)
+    acc_bfss = accuracy_score(y_test, knn_bfss.predict(X_test_b))
+
+    print(f"\nColunas originais: {X_full.shape[1]} | Selecionadas: {len(selected_features)}")
+    print(f"Acurácia Baseline: {acc_baseline:.4f} | Acurácia BFSS: {acc_bfss:.4f}")
+    
+    # Validações lógicas (O código levanta um erro se isso for mentira)
+    assert len(selected_features) > 0, "Erro: Nenhuma feature selecionada!"
+    assert len(selected_features) <= X_full.shape[1], "Erro: Selecionou mais features que o original!"
+    
+    # Limpa o arquivo temporário
+    os.remove(caminho_csv)
+
+if __name__ == "__main__":
+    test_bfss()

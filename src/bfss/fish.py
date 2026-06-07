@@ -9,57 +9,58 @@ class Fish:
         Inicializa um peixe para o Binary Fish School Search.
         :param num_features: total de atributos no dataset.
         """
-        self.position = np.random.randint(2, size=num_features)  # Posição inicial binária aleatoriezada
-        self.weight = 1.0  # Peso inicial
+        # Eq. 11: Posição inicial gerada aleatoriamente com distribuição uniforme (binário)
+        self.position = np.random.randint(2, size=num_features) 
+        self.weight = 1.0 
         self.fitness = 0.0  
-        self.delta_fitness = 0.0  # Variação do fitness
-        
-    def evaluate(self, X, Y):
-        """
-        Recebe o dataset e treina um modelo apenas com os atributos '1' em self.position.
-        Usa KNN como avaliador na abordagem Wapper.
-        """
-        print(f"O peixe está na posição: {self.position}")
-        
-        selected_features = np.where(self.position == 1)[0]  # Índices dos atributos selecionado
+        self.delta_fitness = 0.0
 
-        if len(selected_features) == 0:
+        self.num_features = num_features
+        
+    def evaluate(self, X_train, X_test, y_train, y_test, weight_acc, weight_feat):
+        """
+        Abordagem Wrapper com KNN para avaliar o subconjunto atual de atributos.
+        """
+        selected_features = np.where(self.position == 1)[0]
+        num_selected = len(selected_features)
+
+        # Penalidade máxima se o peixe desativar todos os atributos
+        if num_selected == 0:
+            self.delta_fitness = 0.0 - self.fitness
             self.fitness = 0.0 
             return
         
-        X_subset = X[:, selected_features] # Subconjunto com os atributos selecionados
-
-        #dividir o dataset em treino e teste
-        X_train, X_test, y_train, y_test = train_test_split(X_subset, Y, test_size=0.3, random_state=42)
-
+        # Treina e testa o KNN apenas com os atributos ativos (1)
         model = KNeighborsClassifier(n_neighbors=5)
-        model.fit(X_train, y_train)
-        predictions = model.predict(X_test)
+        model.fit(X_train[:, selected_features], y_train)
+        predictions = model.predict(X_test[:, selected_features])
         
-        #Calcula o Fitness (Acurácia)
-        current_fitness = accuracy_score(y_test, predictions)
+        acc = accuracy_score(y_test, predictions)
+
+        # Eq. 10: Fitness pondera a Performance (Acurácia) e a Redução de Dimensionalidade
+        feature_penalty = (self.num_features - num_selected) / self.num_features
+        current_fitness = (weight_acc * acc) + (weight_feat * feature_penalty)
         
-        #Atualiza a memória interna do peixe
+        # Atualiza a memória de variação (Delta) para a etapa de alimentação
         self.delta_fitness = current_fitness - self.fitness
         self.fitness = current_fitness
 
-        def individual_movement(self, X, y):
-            """
-            Realiza a exploração local: inverte alguns bits de sua posição e avalia a combinação.
-            """
-            # Salva o estado atual na memória
-            old_position = np.copy(self.position)
-            old_fitness = self.fitness
-            
-            # Escolhe um atributo aleatório da posição para inverter
-            feature_to_flip = np.random.randint(len(self.position))
-            self.position[feature_to_flip] = 1 - self.position[feature_to_flip]
-            
-            # Avalia a nova posição
-            self.evaluate(X, y)
-            
-            # desfaz a inversão se o fitness não melhorar
-            if self.fitness <= old_fitness:
-                self.position = old_position
-                self.fitness = old_fitness
-                self.delta_fitness = 0.0 
+    def individual_movement(self, X_train, X_test, y_train, y_test, s_ind_t, weight_acc, weight_feat):
+        """
+        Exploração local baseada na probabilidade de decaimento S_ind.
+        """
+        old_position = np.copy(self.position)
+        old_fitness = self.fitness
+        
+        # Eq. 12: Inversão condicional (flip) para cada bit do vetor
+        for j in range(self.num_features):
+            if np.random.rand() < s_ind_t:
+                self.position[j] = 1 - self.position[j] 
+                
+        self.evaluate(X_train, X_test, y_train, y_test, weight_acc, weight_feat)
+        
+        # Condição de Aceitação: o peixe só adota a nova posição se o fitness melhorar
+        if self.fitness <= old_fitness:
+            self.position = old_position
+            self.fitness = old_fitness
+            self.delta_fitness = 0.0
